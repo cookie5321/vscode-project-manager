@@ -55,3 +55,28 @@ export function getGitBranch(projectPath: string): string | undefined {
         return undefined;
     }
 }
+
+/**
+ * Gets the main repository path of a linked git worktree.
+ * @param projectPath The path to the project directory
+ * @returns The real path of the main working tree, or undefined if not a linked worktree
+ * (regular repo, submodule, or worktree of a bare repository)
+ */
+export function getGitWorktreeMainPath(projectPath: string): string | undefined {
+    try {
+        const gitFileContent = fs.readFileSync(path.join(projectPath, ".git"), "utf8").trim();
+        if (!gitFileContent.startsWith("gitdir: ")) {
+            return undefined;
+        }
+        const gitDir = path.resolve(projectPath, gitFileContent.substring(8));
+        // only linked worktrees have `commondir` (submodules don't)
+        const commonDir = path.resolve(gitDir, fs.readFileSync(path.join(gitDir, "commondir"), "utf8").trim());
+        if (path.basename(commonDir) !== ".git") {
+            return undefined;
+        }
+        return fs.realpathSync(path.dirname(commonDir));
+    } catch {
+        // `.git` is a directory, or not a worktree
+        return undefined;
+    }
+}

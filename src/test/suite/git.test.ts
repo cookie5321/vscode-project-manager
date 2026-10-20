@@ -7,7 +7,7 @@ import fs = require("fs");
 import path = require("path");
 import os = require("os");
 import * as assert from "assert";
-import { getGitBranch } from "../../utils/git";
+import { getGitBranch, getGitWorktreeMainPath } from "../../utils/git";
 
 suite("getGitBranch", () => {
     test("returns undefined for non-git directory", () => {
@@ -181,4 +181,41 @@ suite("getGitBranch", () => {
         const nonExistentDir = path.join(os.tmpdir(), "non-existent-dir-" + Date.now());
         assert.strictEqual(getGitBranch(nonExistentDir), undefined);
     });
+});
+
+suite("getGitWorktreeMainPath", () => {
+    // <root>/main/.git/{worktrees/wt,modules/sub}, <root>/wt/.git and <root>/main/sub/.git are files
+    function withRepos(fn: (root: string) => void) {
+        const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "git-test-worktree-")));
+        try {
+            const mainGit = path.join(root, "main", ".git");
+            fs.mkdirSync(path.join(mainGit, "worktrees", "wt"), { recursive: true });
+            fs.writeFileSync(path.join(mainGit, "worktrees", "wt", "commondir"), "../..\n");
+            fs.mkdirSync(path.join(root, "wt"));
+            fs.writeFileSync(path.join(root, "wt", ".git"), `gitdir: ${path.join(mainGit, "worktrees", "wt")}\n`);
+
+            fs.mkdirSync(path.join(mainGit, "modules", "sub"), { recursive: true });
+            fs.mkdirSync(path.join(root, "main", "sub"));
+            fs.writeFileSync(path.join(root, "main", "sub", ".git"), "gitdir: ../.git/modules/sub\n");
+            fn(root);
+        } finally {
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    }
+
+    test("returns main repository path for a linked worktree", () => withRepos(root => {
+        assert.strictEqual(getGitWorktreeMainPath(path.join(root, "wt")), path.join(root, "main"));
+    }));
+
+    test("returns undefined for the main repository", () => withRepos(root => {
+        assert.strictEqual(getGitWorktreeMainPath(path.join(root, "main")), undefined);
+    }));
+
+    test("returns undefined for a submodule", () => withRepos(root => {
+        assert.strictEqual(getGitWorktreeMainPath(path.join(root, "main", "sub")), undefined);
+    }));
+
+    test("returns undefined for non-git directory", () => withRepos(root => {
+        assert.strictEqual(getGitWorktreeMainPath(root), undefined);
+    }));
 });
