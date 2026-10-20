@@ -3,12 +3,13 @@
 *  Licensed under the GPLv3 License. See License.md in the project root for license information.
 *--------------------------------------------------------------------------------------------*/
 
+import * as fs from "fs";
 import * as vscode from "vscode";
 import { CustomProjectLocator } from "../autodetect/abstractLocator";
 import { ProjectNode } from "./nodes";
 import { Container } from "../core/container";
 import { addParentFolderToDuplicates } from "../utils/path";
-import { getGitBranch } from "../utils/git";
+import { getGitBranch, getGitWorktreeMainPath } from "../utils/git";
 
 export class AutodetectProvider implements vscode.TreeDataProvider<ProjectNode> {
 
@@ -16,6 +17,8 @@ export class AutodetectProvider implements vscode.TreeDataProvider<ProjectNode> 
 
     private projectSource: CustomProjectLocator;
     private internalOnDidChangeTreeData: vscode.EventEmitter<ProjectNode | void> = new vscode.EventEmitter<ProjectNode | void>();
+    // main repository path -> its linked worktree nodes (filled while building the root)
+    private worktrees = new Map<string, ProjectNode[]>();
 
     constructor(projectSource: CustomProjectLocator) {
         this.projectSource = projectSource;
@@ -37,15 +40,7 @@ export class AutodetectProvider implements vscode.TreeDataProvider<ProjectNode> 
 
             if (element) {
 
-                const ll: ProjectNode[] = [];
-
-                ll.push(new ProjectNode(element.label, vscode.TreeItemCollapsibleState.None, "git", element.preview, {
-                    command: "_projectManager.open",
-                    title: "",
-                    arguments: [ element.preview.path ],
-                }));
-
-                resolve(ll);
+                resolve(this.worktrees.get(element.preview.path) ?? []);
 
             } else {
 
@@ -53,6 +48,7 @@ export class AutodetectProvider implements vscode.TreeDataProvider<ProjectNode> 
 
                 // raw list
                 const lll: ProjectNode[] = [];
+                this.worktrees.clear();
 
                 // Locators (VSCode/Git/Mercurial/SVN)
                 // this.projectSource.initializeCfg(this.projectSource.kind);
@@ -74,6 +70,26 @@ export class AutodetectProvider implements vscode.TreeDataProvider<ProjectNode> 
                     const projectsWithParent = addParentFolderToDuplicates(projectList);
                     const showGitBranch = vscode.workspace.getConfiguration("projectManager").get<string>("git.showBranchName", "never");
 
+                    // linked worktrees are nested under their main repository, when it was detected too
+                    const mainPathOf = new Map<string, string>();
+                    if (this.projectSource.kind === "git") {
+                        const detected = new Map<string, string>();
+                        for (const p of projectsWithParent) {
+                            try {
+                                detected.set(fs.realpathSync(p.path), p.path);
+                            } catch {
+                                // path no longer exists
+                            }
+                        }
+                        for (const p of projectsWithParent) {
+                            const mainPath = detected.get(getGitWorktreeMainPath(p.path));
+                            if (mainPath && mainPath !== p.path) {
+                                mainPathOf.set(p.path, mainPath);
+                            }
+                        }
+                    }
+                    const mainPaths = new Set(mainPathOf.values());
+
                     for (let index = 0; index < projectsWithParent.length; index++) {
                         const dirinfo = projectsWithParent[ index ];
 
@@ -91,7 +107,8 @@ export class AutodetectProvider implements vscode.TreeDataProvider<ProjectNode> 
                             }
                         }
 
-                        lll.push(new ProjectNode(dirinfo.name, vscode.TreeItemCollapsibleState.None,
+                        const node = new ProjectNode(dirinfo.name,
+                            mainPaths.has(dirinfo.path) ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
                             dirinfo.icon, {
                                 name: dirinfo.name,
                                 detail: detail,
@@ -100,7 +117,14 @@ export class AutodetectProvider implements vscode.TreeDataProvider<ProjectNode> 
                                 command: "_projectManager.open",
                                 title: "",
                                 arguments: [ dirinfo.path, dirinfo.name ],
-                            }));
+                            });
+
+                        const mainPath = mainPathOf.get(dirinfo.path);
+                        if (mainPath) {
+                            this.worktrees.set(mainPath, [ ...(this.worktrees.get(mainPath) ?? []), node ]);
+                        } else {
+                            lll.push(node);
+                        }
                     }
                 }
 
