@@ -1,6 +1,7 @@
 {
     "projectManager.activitybar.title": "Project Manager",
     "projectManager.views.favorites.name": "Favorites",
+    "projectManager.views.recent.name": "Recent",
     "projectManager.views.git.name": "Git",
     "projectManager.views.svn.name": "SVN",
     "projectManager.views.any.name": "Any",

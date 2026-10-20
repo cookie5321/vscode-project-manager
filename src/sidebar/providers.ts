@@ -9,6 +9,7 @@ import { ProjectStorage } from "../storage/storage";
 import { ProjectNode, TagNode } from "./nodes";
 import { AutodetectProvider } from "./autodetectProvider";
 import { StorageProvider } from "./storageProvider";
+import { RecentProvider } from "./recentProvider";
 import { Container } from "../core/container";
 import { l10n } from "vscode";
 
@@ -20,6 +21,7 @@ export class Providers {
     public mercurialProvider: AutodetectProvider;
     public svnProvider: AutodetectProvider;
     public anyProvider: AutodetectProvider;
+    public recentProvider: RecentProvider;
 
     private storageTreeView: vscode.TreeView<ProjectNode | TagNode>;
     private vscodeTreeView: vscode.TreeView<ProjectNode>;
@@ -41,6 +43,7 @@ export class Providers {
         this.mercurialProvider = new AutodetectProvider(this.locators.mercurialLocator);
         this.svnProvider = new AutodetectProvider(this.locators.svnLocator);
         this.anyProvider = new AutodetectProvider(this.locators.anyLocator);
+        this.recentProvider = new RecentProvider(this.locators.gitLocator);
 
         this.storageTreeView = vscode.window.createTreeView("projectsExplorerFavorites", {
             treeDataProvider: this.storageProvider,
@@ -66,6 +69,10 @@ export class Providers {
             treeDataProvider: this.anyProvider,
             showCollapseAll: false
         });
+        Container.context.subscriptions.push(vscode.window.createTreeView("projectsExplorerRecent", {
+            treeDataProvider: this.recentProvider,
+            showCollapseAll: false
+        }));
 
         this.registerStorageTreeViewListeners();
     }
@@ -86,6 +93,9 @@ export class Providers {
                     this.gitProvider.refresh();
                 }
             }),
+            // recently opened changes from other windows, recently added follows the Git list
+            vscode.window.onDidChangeWindowState(state => state.focused && this.recentProvider.refresh()),
+            this.gitProvider.onDidChangeTreeData(() => this.recentProvider.refresh()),
         );
     }
 
@@ -108,6 +118,7 @@ export class Providers {
         await this.mercurialProvider.showTreeView();
         await this.svnProvider.showTreeView();
         await this.anyProvider.showTreeView();
+        this.recentProvider.refresh();
 
         this.updateTreeViewDetails();
     }
