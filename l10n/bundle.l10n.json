@@ -47,5 +47,7 @@
     "filtered by tags": "filtered by tags",
     "Save the workspace first to save a project": "Save the workspace first to save a project",
     "Open a folder first to save a project": "Open a folder first to save a project",
-    "Save Project": "Save Project"
+    "Save Project": "Save Project",
+    "Recently Opened": "Recently Opened",
+    "Recently Added Git Repositories": "Recently Added Git Repositories"
 }
